@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ClockSync Metronome — NTP / Device Synchronized</title>
+  <meta name="description" content="A device-clock synchronized metronome that guarantees a downbeat at the start of every minute for multi-device lockstep tempo.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+  <!-- Full Screen Beat Strobe Overlay -->
+  <div id="strobe-overlay" aria-hidden="true"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-branding">
+        <div class="logo-icon">
+          <span class="pulse-ring"></span>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+        </div>
+        <div>
+          <h1 class="logo-title">ClockSync <span class="badge">NTP-LOCKED</span></h1>
+          <p class="logo-subtitle">Wall-clock downbeat at :00.000 of every minute</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Theme Toggle -->
+        <button id="theme-toggle-btn" class="icon-btn" title="Toggle Light / Dark Mode" aria-label="Toggle Theme">
+          <svg id="theme-sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg id="theme-moon-icon" class="hidden" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+
+        <!-- Help / Info Modal Trigger -->
+        <button id="info-modal-btn" class="icon-btn" title="How Clock Sync Works" aria-label="Information">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Display Section -->
+    <main class="main-card">
+      <!-- Sync Status Pill -->
+      <div class="sync-banner">
+        <div class="sync-indicator online">
+          <span class="indicator-dot"></span>
+          <span class="indicator-text">DEVICE CLOCK SYNCED</span>
+        </div>
+        <div class="clock-display" id="device-clock" title="Device Wall Clock">
+          00:00:00.000
+        </div>
+      </div>
+
+      <!-- Visual Cues Container -->
+      <section class="visualizer-container" id="visualizer-container">
+        <!-- Visual Cue Selector Controls -->
+        <div class="viz-header">
+          <span class="viz-label">Visual Cue</span>
+          <div class="viz-mode-tabs" role="tablist">
+            <button class="viz-tab active" data-mode="auto" title="Ball for tempo >= 100 BPM, Circular Progress for < 100 BPM">Auto</button>
+            <button class="viz-tab" data-mode="ball" title="Parabolic bouncing ball">Ball</button>
+            <button class="viz-tab" data-mode="circle" title="Circular progress ring">Circle</button>
+            <button class="viz-tab" data-mode="both" title="Display both cues">Both</button>
+          </div>
+        </div>
+
+        <div class="viz-viewport">
+          <!-- Circular Progress Visualizer -->
+          <div class="viz-panel circle-panel" id="circle-panel">
+            <div class="circle-viz-wrapper">
+              <svg class="circular-progress-svg" viewBox="0 0 200 200">
+                <circle class="circle-bg" cx="100" cy="100" r="82"></circle>
+                <!-- Segment markers for beats -->
+                <g id="circle-segments" class="circle-segments"></g>
+                <!-- Continuous beat progress ring -->
+                <circle id="circle-progress" class="circle-progress" cx="100" cy="100" r="82"></circle>
+              </svg>
+              <div class="circle-center-content">
+                <span class="current-beat-number" id="center-beat-number">1</span>
+                <span class="beat-label" id="center-beat-label">DOWNBEAT</span>
+                <span class="sub-beat-progress" id="center-ms-remaining">-- ms</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bouncing Ball Visualizer -->
+          <div class="viz-panel ball-panel" id="ball-panel">
+            <canvas id="ball-canvas" width="460" height="190"></canvas>
+          </div>
+        </div>
+
+        <!-- Beat Sequence Dots / Beads -->
+        <div class="beat-indicators" id="beat-dots-container" aria-label="Beats in Bar">
+          <!-- Dynamically populated based on beats/bar -->
+        </div>
+      </section>
+
+      <!-- BPM Display & Controls -->
+      <section class="tempo-control-section">
+        <div class="bpm-hero">
+          <div class="bpm-value-wrapper">
+            <input type="number" id="bpm-input" min="20" max="300" step="1" value="120" aria-label="BPM Value">
+            <span class="bpm-unit">BPM</span>
+          </div>
+          <div class="tempo-marking" id="tempo-marking">Moderato</div>
+        </div>
+
+        <!-- BPM Increments Buttons (+/-, +5/-5) -->
+        <div class="bpm-buttons-grid">
+          <button id="bpm-minus-5" class="btn btn-nudge" aria-label="Decrease 5 BPM">-5</button>
+          <button id="bpm-minus-1" class="btn btn-nudge" aria-label="Decrease 1 BPM">-1</button>
+          <button id="bpm-plus-1" class="btn btn-nudge" aria-label="Increase 1 BPM">+1</button>
+          <button id="bpm-plus-5" class="btn btn-nudge" aria-label="Increase 5 BPM">+5</button>
+        </div>
+
+        <!-- BPM Slider -->
+        <div class="slider-container">
+          <input type="range" id="bpm-slider" min="30" max="250" value="120" step="1" aria-label="Tempo Slider">
+          <div class="slider-ticks">
+            <span>30</span>
+            <span>60</span>
+            <span>90</span>
+            <span>120</span>
+            <span>160</span>
+            <span>200</span>
+            <span>250</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Beats Per Bar (3 / 4 / 6) -->
+      <section class="meter-section">
+        <div class="section-label-row">
+          <label class="section-label">Beats Per Bar</label>
+          <span class="section-subtext">Downbeat on beat 1 & at :00 of minute</span>
+        </div>
+        <div class="segmented-control" role="group" aria-label="Time Signature">
+          <button class="seg-btn" data-beats="3" aria-pressed="false">
+            <span class="seg-number">3</span>
+            <span class="seg-sub">Waltz (3/4)</span>
+          </button>
+          <button class="seg-btn active" data-beats="4" aria-pressed="true">
+            <span class="seg-number">4</span>
+            <span class="seg-sub">Common (4/4)</span>
+          </button>
+          <button class="seg-btn" data-beats="6" aria-pressed="false">
+            <span class="seg-number">6</span>
+            <span class="seg-sub">Compound (6/8)</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Primary Action: Start / Stop -->
+      <section class="action-section">
+        <button id="play-btn" class="btn-play">
+          <div class="btn-play-content">
+            <svg id="play-icon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <svg id="stop-icon" class="hidden" width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+            </svg>
+            <span id="play-btn-text">START METRONOME</span>
+          </div>
+          <span class="shortcut-hint">Press [Space] to toggle</span>
+        </button>
+      </section>
+
+      <!-- Visual & Audio Options Accordion / Tray -->
+      <section class="settings-drawer">
+        <button id="drawer-toggle-btn" class="drawer-header" aria-expanded="false">
+          <span class="drawer-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Advanced Options (Strobe, Sound, Latency Calibration)
+          </span>
+          <svg class="chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+
+        <div id="drawer-content" class="drawer-content hidden">
+          <!-- Strobe Settings -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <label for="strobe-select" class="setting-title">Screen Strobe Flash</label>
+              <span class="setting-desc">Full screen flash on beats with slight fade</span>
+            </div>
+            <select id="strobe-select" class="custom-select">
+              <option value="all">Every Beat (Accent Downbeat)</option>
+              <option value="downbeat">Downbeat Only</option>
+              <option value="subtle">Subtle Flash</option>
+              <option value="off">Off</option>
+            </select>
+          </div>
+
+          <!-- Sound Selector -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <label for="sound-select" class="setting-title">Click Sound</label>
+              <span class="setting-desc">Synthesized crisp audio envelope</span>
+            </div>
+            <select id="sound-select" class="custom-select">
+              <option value="woodblock">Acoustic Woodblock</option>
+              <option value="beep">Digital Beep (High/Low)</option>
+              <option value="mechanical">Mechanical Metronome</option>
+              <option value="drum">Rimshot & Hi-Hat</option>
+              <option value="silent">Mute (Visual Only)</option>
+            </select>
+          </div>
+
+          <!-- Volume Slider -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <label for="volume-slider" class="setting-title">Volume</label>
+              <span class="setting-desc" id="volume-val-text">85%</span>
+            </div>
+            <input type="range" id="volume-slider" min="0" max="100" value="85" class="setting-range">
+          </div>
+
+          <!-- Tap Tempo Button -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <span class="setting-title">Tap Tempo</span>
+              <span class="setting-desc">Tap 4 times to measure tempo</span>
+            </div>
+            <button id="tap-tempo-btn" class="btn btn-secondary">Tap Here</button>
+          </div>
+
+          <!-- Latency Calibration / Offset -->
+          <div class="setting-item">
+            <div class="setting-text">
+              <label for="latency-offset" class="setting-title">Sync Calibration Offset</label>
+              <span class="setting-desc">Nudge if Bluetooth speaker or device audio has latency (<span id="offset-val">0</span>ms)</span>
+            </div>
+            <div class="offset-controls">
+              <button id="offset-minus-10" class="btn btn-small">-10ms</button>
+              <button id="offset-zero" class="btn btn-small">Reset</button>
+              <button id="offset-plus-10" class="btn btn-small">+10ms</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sync Diagnostics Footer Panel -->
+      <footer class="sync-diagnostics">
+        <div class="diag-item">
+          <span class="diag-label">Min. Elapsed:</span>
+          <span class="diag-val" id="diag-min-elapsed">00.00s</span>
+        </div>
+        <div class="diag-item">
+          <span class="diag-label">Beat In Min:</span>
+          <span class="diag-val" id="diag-beat-in-min">0 / 120</span>
+        </div>
+        <div class="diag-item">
+          <span class="diag-label">Next Downbeat:</span>
+          <span class="diag-val accent-val" id="diag-next-min">:00.000</span>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Info Modal -->
+  <div id="info-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modal-title" class="modal-heading">How Device Sync Works</h2>
+        <button id="close-modal-btn" class="icon-btn" aria-label="Close modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p><strong>ClockSync Metronome</strong> anchors its beat grid directly to the international wall-clock time (device time) rather than the instant you tap "Play".</p>
+        
+        <h3>The Core Rules:</h3>
+        <ul>
+          <li><strong>Integer BPM:</strong> At $N$ BPM, exactly $N$ beats fit in each 60-second minute.</li>
+          <li><strong>Downbeat at :00.000:</strong> Every minute starts with Beat 1 (Downbeat).</li>
+          <li><strong>No Arbitrary Start:</strong> Starting playback immediately jumps into whatever beat and phase matches the current wall clock second.</li>
+        </ul>
+
+        <h3>Multi-Device Synchronization:</h3>
+        <p>Because smartphones, laptops, and smart devices synchronize with NTP (Network Time Protocol) or GPS time servers, two or more separate devices opening this webpage will play clicks and flash visual cues in lockstep without needing any local Wi-Fi pairing or Bluetooth.</p>
+
+        <h3>Visual Cues:</h3>
+        <ul>
+          <li><strong>Strobe:</strong> Full screen flash on every beat with a rapid fade, with stronger accents on beat 1. Switchable dark/light themes.</li>
+          <li><strong>Bouncing Ball:</strong> Realistic gravity bounce, ideal for faster tempos (>= 100 BPM) to track timing physically.</li>
+          <li><strong>Circular Progress:</strong> Radial sweep and segment countdown for slower tempos (< 100 BPM).</li>
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button id="modal-ok-btn" class="btn btn-primary">Got it!</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
